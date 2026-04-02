@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 
 // ── Scene setup ──────────────────────────────────────────────
 const scene = new THREE.Scene();
@@ -11,6 +12,13 @@ renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(devicePixelRatio);
 renderer.setClearColor(0x020810);
 document.body.appendChild(renderer.domElement);
+
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.setSize(innerWidth, innerHeight);
+labelRenderer.domElement.style.position = 'absolute';
+labelRenderer.domElement.style.top = '0';
+labelRenderer.domElement.style.pointerEvents = 'none';
+document.body.appendChild(labelRenderer.domElement);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
@@ -89,6 +97,14 @@ function createNode(label, position, parentId = null, depth = 0) {
     scene.add(glow);
     mesh.userData.glow = glow;
   }
+
+  // Floating label above node
+  const labelDiv = document.createElement('div');
+  labelDiv.className = isRoot ? 'node-label root' : 'node-label';
+  labelDiv.textContent = label;
+  const labelObj = new CSS2DObject(labelDiv);
+  labelObj.position.set(0, radius + 0.4, 0);
+  mesh.add(labelObj);
 
   const id = nextId++;
   const node = { mesh, label, parentId, id, depth, color };
@@ -356,6 +372,7 @@ function animate() {
   updateEdges();
   controls.update();
   renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
 }
 
 animate();
@@ -365,4 +382,5 @@ window.addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
+  labelRenderer.setSize(innerWidth, innerHeight);
 });
