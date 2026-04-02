@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 
+// ── Scene setup ──────────────────────────────────────────────
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 1000);
 camera.position.set(0, 5, 16);
@@ -11,10 +13,18 @@ renderer.setPixelRatio(devicePixelRatio);
 renderer.setClearColor(0x020810);
 document.body.appendChild(renderer.domElement);
 
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.setSize(innerWidth, innerHeight);
+labelRenderer.domElement.style.position = 'absolute';
+labelRenderer.domElement.style.top = '0';
+labelRenderer.domElement.style.pointerEvents = 'none';
+document.body.appendChild(labelRenderer.domElement);
+
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 
+// ── Lighting (cold, techy) ───────────────────────────────────
 scene.add(new THREE.AmbientLight(0x1a3a5c, 0.4));
 const dirLight = new THREE.DirectionalLight(0x4fc3f7, 0.6);
 dirLight.position.set(5, 10, 7);
@@ -23,16 +33,19 @@ const rimLight = new THREE.DirectionalLight(0x00e5ff, 0.3);
 rimLight.position.set(-5, -3, -5);
 scene.add(rimLight);
 
+// ── HUD grid (Jarvis floor) ─────────────────────────────────
 const gridHelper = new THREE.GridHelper(40, 40, 0x0a3d5c, 0x061a2e);
 gridHelper.position.y = -4;
 gridHelper.material.opacity = 0.3;
 gridHelper.material.transparent = true;
 scene.add(gridHelper);
 
+// ── Data ─────────────────────────────────────────────────────
 const nodes = [];
 const edges = [];
 let nextId = 0;
 
+// Jarvis palette: cyans, electric blues, warm accents
 const COLORS = [
   0x00e5ff, 0x00b8d4, 0x18ffff, 0x40c4ff,
   0x448aff, 0x69f0ae, 0xffab40, 0xff6e40,
@@ -42,11 +55,13 @@ function pickColor(depth) {
   return COLORS[depth % COLORS.length];
 }
 
+// ── Node creation ────────────────────────────────────────────
 function createNode(label, position, parentId = null, depth = 0) {
   const isRoot = depth === 0;
   const radius = isRoot ? 0.55 : 0.3;
   const color = pickColor(depth);
 
+  // Main sphere - wireframe for Jarvis look
   const geometry = new THREE.IcosahedronGeometry(radius, isRoot ? 2 : 1);
   const material = new THREE.MeshStandardMaterial({
     color,
@@ -60,6 +75,7 @@ function createNode(label, position, parentId = null, depth = 0) {
   mesh.position.copy(position);
   scene.add(mesh);
 
+  // Outer glow ring for root nodes
   if (isRoot) {
     const ringGeo = new THREE.RingGeometry(radius * 1.3, radius * 1.5, 32);
     const ringMat = new THREE.MeshBasicMaterial({
@@ -74,12 +90,21 @@ function createNode(label, position, parentId = null, depth = 0) {
     mesh.userData.ring = ring;
   }
 
+  // Point light on root nodes for glow effect
   if (isRoot) {
     const glow = new THREE.PointLight(color, 1, 8);
     glow.position.copy(position);
     scene.add(glow);
     mesh.userData.glow = glow;
   }
+
+  // Floating label above node
+  const labelDiv = document.createElement('div');
+  labelDiv.className = isRoot ? 'node-label root' : 'node-label';
+  labelDiv.textContent = label;
+  const labelObj = new CSS2DObject(labelDiv);
+  labelObj.position.set(0, radius + 0.4, 0);
+  mesh.add(labelObj);
 
   const id = nextId++;
   const node = { mesh, label, parentId, id, depth, color };
@@ -93,6 +118,7 @@ function createNode(label, position, parentId = null, depth = 0) {
   return node;
 }
 
+// ── Edge creation (bright, visible) ──────────────────────────
 function addEdge(fromId, toId) {
   const from = nodes.find(n => n.id === fromId);
   const to = nodes.find(n => n.id === toId);
@@ -101,6 +127,7 @@ function addEdge(fromId, toId) {
   const points = [from.mesh.position.clone(), to.mesh.position.clone()];
   const geometry = new THREE.BufferGeometry().setFromPoints(points);
 
+  // Bright glowing line
   const material = new THREE.LineBasicMaterial({
     color: 0x00e5ff,
     opacity: 0.7,
@@ -110,6 +137,7 @@ function addEdge(fromId, toId) {
   const line = new THREE.Line(geometry, material);
   scene.add(line);
 
+  // Second line for glow effect (wider, dimmer)
   const glowMat = new THREE.LineBasicMaterial({
     color: 0x00e5ff,
     opacity: 0.2,
@@ -137,6 +165,7 @@ function updateEdges() {
   }
 }
 
+// ── Random position around a parent ─────────────────────────
 function childPosition(parentPos, depth) {
   const distance = 2.5 + Math.random() * 1.5;
   const theta = Math.random() * Math.PI * 2;
@@ -148,7 +177,9 @@ function childPosition(parentPos, depth) {
   );
 }
 
+// ── Build starter mindmap (multiple root ideas) ──────────────
 function buildStarterMap() {
+  // Root idea 1
   const root1 = createNode('Projekt Alpha', new THREE.Vector3(-5, 0, 0), null, 0);
   const r1topics = ['Research', 'Design', 'Kode'];
   const r1subs = {
@@ -164,6 +195,7 @@ function buildStarterMap() {
     }
   }
 
+  // Root idea 2
   const root2 = createNode('Projekt Beta', new THREE.Vector3(5, 0, 0), null, 0);
   const r2topics = ['Test', 'Lancering', 'Skalering'];
   const r2subs = {
@@ -182,6 +214,7 @@ function buildStarterMap() {
 
 buildStarterMap();
 
+// ── Raycaster for interaction ────────────────────────────────
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 const tooltip = document.getElementById('tooltip');
@@ -203,6 +236,7 @@ function getIntersectedNode(event) {
   return null;
 }
 
+// ── Mouse events ─────────────────────────────────────────────
 renderer.domElement.addEventListener('mousemove', (e) => {
   const node = getIntersectedNode(e);
   if (node) {
@@ -252,6 +286,7 @@ renderer.domElement.addEventListener('dblclick', (e) => {
   createNode(label, pos, parent.id, parent.depth + 1);
 });
 
+// ── UI buttons ───────────────────────────────────────────────
 document.getElementById('btn-add').addEventListener('click', () => {
   const parent = selectedNode || nodes[0];
   if (!parent) return;
@@ -282,6 +317,7 @@ document.getElementById('btn-reset').addEventListener('click', () => {
   controls.target.set(0, 0, 0);
 });
 
+// ── Particle field (Jarvis atmosphere) ───────────────────────
 const particleCount = 300;
 const particleGeo = new THREE.BufferGeometry();
 const particlePositions = new Float32Array(particleCount * 3);
@@ -300,6 +336,7 @@ const particleMat = new THREE.PointsMaterial({
 const particles = new THREE.Points(particleGeo, particleMat);
 scene.add(particles);
 
+// ── Animation ────────────────────────────────────────────────
 const clock = new THREE.Clock();
 
 function animate() {
@@ -309,6 +346,7 @@ function animate() {
   for (const node of nodes) {
     node.mesh.position.y += Math.sin(t * 0.8 + node.id * 1.3) * 0.001;
 
+    // Rotate root node wireframes
     if (node.depth === 0) {
       node.mesh.rotation.y = t * 0.3 + node.id;
       node.mesh.rotation.x = Math.sin(t * 0.2) * 0.1;
@@ -323,21 +361,26 @@ function animate() {
     }
   }
 
+  // Pulse edges
   for (const edge of edges) {
     edge.line.material.opacity = 0.5 + Math.sin(t * 2) * 0.2;
   }
 
+  // Slowly rotate particles
   particles.rotation.y = t * 0.02;
 
   updateEdges();
   controls.update();
   renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
 }
 
 animate();
 
+// ── Resize ───────────────────────────────────────────────────
 window.addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
+  labelRenderer.setSize(innerWidth, innerHeight);
 });
